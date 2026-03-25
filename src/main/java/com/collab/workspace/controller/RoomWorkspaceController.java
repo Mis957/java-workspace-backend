@@ -77,6 +77,18 @@ public class RoomWorkspaceController {
         return ResponseEntity.ok(roomWorkspaceService.addMember(getEmail(httpRequest), roomId, request));
     }
 
+    @PutMapping("/rooms/{roomId}/members/{memberUserId}/permissions")
+    public ResponseEntity<Map<String, Object>> updateMemberPermissions(
+        @PathVariable Long roomId,
+        @PathVariable Long memberUserId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(
+            roomWorkspaceService.updateMemberPermissions(getEmail(httpRequest), roomId, memberUserId, request)
+        );
+    }
+
     @GetMapping("/rooms/{roomId}/files")
     public ResponseEntity<List<Map<String, Object>>> roomFiles(
         @PathVariable Long roomId,

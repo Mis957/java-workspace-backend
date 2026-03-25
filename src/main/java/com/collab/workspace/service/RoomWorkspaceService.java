@@ -6,6 +6,7 @@ import com.collab.workspace.entity.RoomMember;
 import com.collab.workspace.entity.RoomMemberId;
 import com.collab.workspace.entity.User;
 import com.collab.workspace.entity.WorkspaceFile;
+import com.collab.workspace.exception.CustomException;
 import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
@@ -18,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -119,6 +121,38 @@ public class RoomWorkspaceService {
         return toRoomSummary(room);
     }
 
+    @Transactional
+    public Map<String, Object> updateMemberPermissions(
+        String currentUserEmail,
+        Long roomId,
+        Long memberUserId,
+        WorkspaceRequest request
+    ) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureOwner(room, currentUser);
+
+        if (room.getOwner() != null && room.getOwner().getId().equals(memberUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Owner permissions cannot be changed");
+        }
+
+        RoomMember member = roomMemberRepository.findByRoom_IdAndUser_Id(roomId, memberUserId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Room member not found"));
+
+        if (request.getCanEditFiles() != null) {
+            member.setCanEditFiles(request.getCanEditFiles());
+        }
+        if (request.getCanSaveVersions() != null) {
+            member.setCanSaveVersions(request.getCanSaveVersions());
+        }
+        if (request.getCanRevertVersions() != null) {
+            member.setCanRevertVersions(request.getCanRevertVersions());
+        }
+
+        roomMemberRepository.save(member);
+        return toMemberSummary(room, member);
+    }
+
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getRoomFiles(String currentUserEmail, Long roomId) {
         User currentUser = getUserByEmail(currentUserEmail);
@@ -149,6 +183,7 @@ public class RoomWorkspaceService {
         User currentUser = getUserByEmail(currentUserEmail);
         Room room = getRoomById(roomId);
         ensureMember(room, currentUser);
+        ensureCanEditFiles(room, currentUser);
 
         String filePath = required(request.getFilePath(), "filePath is required").trim();
         if (workspaceFileRepository.existsByRoom_IdAndFilePathIgnoreCase(roomId, filePath)) {
@@ -174,8 +209,10 @@ public class RoomWorkspaceService {
         User currentUser = getUserByEmail(currentUserEmail);
         Room room = getRoomById(roomId);
         ensureMember(room, currentUser);
+        ensureCanEditFiles(room, currentUser);
 
         WorkspaceFile file = getRoomFileById(roomId, fileId);
+        ensureNoEditConflict(file, request.getExpectedUpdatedAt());
 
         if (request.getFilePath() != null && !request.getFilePath().isBlank()) {
             String filePath = request.getFilePath().trim();
@@ -202,11 +239,34 @@ public class RoomWorkspaceService {
         return response;
     }
 
+    private void ensureNoEditConflict(WorkspaceFile file, String expectedUpdatedAt) {
+        if (expectedUpdatedAt == null || expectedUpdatedAt.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "expectedUpdatedAt is required for save operation");
+        }
+
+        LocalDateTime expected;
+        try {
+            expected = LocalDateTime.parse(expectedUpdatedAt);
+        } catch (DateTimeParseException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "expectedUpdatedAt must be ISO-8601 LocalDateTime");
+        }
+
+        LocalDateTime current = file.getUpdatedAt();
+        if (current != null && !current.equals(expected)) {
+            throw new CustomException(
+                HttpStatus.CONFLICT,
+                "EDIT_CONFLICT",
+                "File changed by another user. Refresh and merge your changes."
+            );
+        }
+    }
+
     @Transactional
     public Map<String, Object> uploadJavaFile(String currentUserEmail, Long roomId, MultipartFile multipartFile) {
         User currentUser = getUserByEmail(currentUserEmail);
         Room room = getRoomById(roomId);
         ensureMember(room, currentUser);
+        ensureCanEditFiles(room, currentUser);
 
         FileUtil.validateJavaUpload(multipartFile);
 
@@ -299,11 +359,15 @@ public class RoomWorkspaceService {
 
     private Map<String, Object> toMemberSummary(Room room, RoomMember member) {
         Map<String, Object> response = new LinkedHashMap<>();
+        boolean isOwner = room.getOwner().getId().equals(member.getUser().getId());
         response.put("id", member.getUser().getId());
         response.put("name", member.getUser().getName());
         response.put("email", member.getUser().getEmail());
         response.put("joinedAt", member.getJoinedAt());
-        response.put("owner", room.getOwner().getId().equals(member.getUser().getId()));
+        response.put("owner", isOwner);
+        response.put("canEditFiles", isOwner || member.isCanEditFiles());
+        response.put("canSaveVersions", isOwner || member.isCanSaveVersions());
+        response.put("canRevertVersions", isOwner || member.isCanRevertVersions());
         return response;
     }
 
@@ -355,6 +419,19 @@ public class RoomWorkspaceService {
     private void ensureOwner(Room room, User user) {
         if (room.getOwner() == null || !room.getOwner().getId().equals(user.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only room owner can manage members");
+        }
+    }
+
+    private void ensureCanEditFiles(Room room, User user) {
+        if (room.getOwner() != null && room.getOwner().getId().equals(user.getId())) {
+            return;
+        }
+
+        RoomMember member = roomMemberRepository.findByRoom_IdAndUser_Id(room.getId(), user.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not a member of this room"));
+
+        if (!member.isCanEditFiles()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to edit files in this room");
         }
     }
 

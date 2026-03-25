@@ -17,7 +17,12 @@ public class WorkspaceRequest {
     private String filePath;
     private String language;
     private String content;
+
     private String versionMessage;
+    private String expectedUpdatedAt;
+    private Boolean canEditFiles;
+    private Boolean canSaveVersions;
+    private Boolean canRevertVersions;
 
     public String getWorkspaceName() {
         return workspaceName;
@@ -105,5 +110,37 @@ public class WorkspaceRequest {
 
     public void setVersionMessage(String versionMessage) {
         this.versionMessage = versionMessage;
+    }
+
+    public String getExpectedUpdatedAt() {
+        return expectedUpdatedAt;
+    }
+
+    public void setExpectedUpdatedAt(String expectedUpdatedAt) {
+        this.expectedUpdatedAt = expectedUpdatedAt;
+    }
+
+    public Boolean getCanEditFiles() {
+        return canEditFiles;
+    }
+
+    public void setCanEditFiles(Boolean canEditFiles) {
+        this.canEditFiles = canEditFiles;
+    }
+
+    public Boolean getCanSaveVersions() {
+        return canSaveVersions;
+    }
+
+    public void setCanSaveVersions(Boolean canSaveVersions) {
+        this.canSaveVersions = canSaveVersions;
+    }
+
+    public Boolean getCanRevertVersions() {
+        return canRevertVersions;
+    }
+
+    public void setCanRevertVersions(Boolean canRevertVersions) {
+        this.canRevertVersions = canRevertVersions;
     }
 }

@@ -49,6 +49,7 @@ public class VersionService {
 		User currentUser = getUserByEmail(currentUserEmail);
 		Room room = getRoomById(roomId);
 		ensureMember(room, currentUser);
+		ensureCanSaveVersions(room, currentUser);
 		WorkspaceFile file = getRoomFileById(roomId, fileId);
 
 		if (request != null && request.getContent() != null) {
@@ -94,7 +95,7 @@ public class VersionService {
 	public Map<String, Object> revertToVersion(String currentUserEmail, Long roomId, Long fileId, Long versionId) {
 		User currentUser = getUserByEmail(currentUserEmail);
 		Room room = getRoomById(roomId);
-		ensureMember(room, currentUser);
+		ensureCanRevertVersions(room, currentUser);
 		WorkspaceFile file = getRoomFileById(roomId, fileId);
 
 		Version version = versionRepository.findByIdAndFile_Id(versionId, fileId)
@@ -175,6 +176,38 @@ public class VersionService {
 
 		if (!isOwner && !isMember) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not a member of this room");
+		}
+	}
+
+	private void ensureOwner(Room room, User user) {
+		if (room.getOwner() == null || !room.getOwner().getId().equals(user.getId())) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only room owner can manage this action");
+		}
+	}
+
+	private void ensureCanSaveVersions(Room room, User user) {
+		if (room.getOwner() != null && room.getOwner().getId().equals(user.getId())) {
+			return;
+		}
+
+		var member = roomMemberRepository.findByRoom_IdAndUser_Id(room.getId(), user.getId())
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not a member of this room"));
+
+		if (!member.isCanSaveVersions()) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to save versions");
+		}
+	}
+
+	private void ensureCanRevertVersions(Room room, User user) {
+		if (room.getOwner() != null && room.getOwner().getId().equals(user.getId())) {
+			return;
+		}
+
+		var member = roomMemberRepository.findByRoom_IdAndUser_Id(room.getId(), user.getId())
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not a member of this room"));
+
+		if (!member.isCanRevertVersions()) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to revert versions");
 		}
 	}
 

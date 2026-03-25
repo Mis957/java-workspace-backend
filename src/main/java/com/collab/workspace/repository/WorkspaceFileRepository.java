@@ -15,4 +15,8 @@ public interface WorkspaceFileRepository extends JpaRepository<WorkspaceFile, Lo
 	boolean existsByRoom_IdAndFilePathIgnoreCase(Long roomId, String filePath);
 
 	long countByRoom_Id(Long roomId);
+
+	long countByRoom_IdIn(List<Long> roomIds);
+
+	List<WorkspaceFile> findTop20ByRoom_IdInOrderByUpdatedAtDesc(List<Long> roomIds);
 }

@@ -21,6 +21,10 @@ public class RoomMember {
 
     private LocalDateTime joinedAt = LocalDateTime.now();
 
+    private boolean canEditFiles = true;
+    private boolean canSaveVersions = true;
+    private boolean canRevertVersions = false;
+
     public RoomMemberId getId() { return id; }
     public void setId(RoomMemberId id) { this.id = id; }
 
@@ -32,6 +36,15 @@ public class RoomMember {
 
     public LocalDateTime getJoinedAt() { return joinedAt; }
     public void setJoinedAt(LocalDateTime joinedAt) { this.joinedAt = joinedAt; }
+
+    public boolean isCanEditFiles() { return canEditFiles; }
+    public void setCanEditFiles(boolean canEditFiles) { this.canEditFiles = canEditFiles; }
+
+    public boolean isCanSaveVersions() { return canSaveVersions; }
+    public void setCanSaveVersions(boolean canSaveVersions) { this.canSaveVersions = canSaveVersions; }
+
+    public boolean isCanRevertVersions() { return canRevertVersions; }
+    public void setCanRevertVersions(boolean canRevertVersions) { this.canRevertVersions = canRevertVersions; }
 
     @Override
     public boolean equals(Object o) {

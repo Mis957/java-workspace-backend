@@ -14,6 +14,10 @@ public class WorkspaceRequest {
     private String roomName;
     private String roomCode;
     private String memberEmail;
+    private String filePath;
+    private String language;
+    private String content;
+    private String versionMessage;
 
     public String getWorkspaceName() {
         return workspaceName;
@@ -69,5 +73,37 @@ public class WorkspaceRequest {
 
     public void setMemberEmail(String memberEmail) {
         this.memberEmail = memberEmail;
+    }
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public String getVersionMessage() {
+        return versionMessage;
+    }
+
+    public void setVersionMessage(String versionMessage) {
+        this.versionMessage = versionMessage;
     }
 }

@@ -1,6 +1,6 @@
 package com.collab.workspace.engine;
 
-import com.collab.workspace.dto.JavaWorkspaceRequest;
+import com.collab.workspace.dto.WorkspaceRequest;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

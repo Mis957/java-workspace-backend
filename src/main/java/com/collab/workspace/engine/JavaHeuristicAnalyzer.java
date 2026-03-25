@@ -4,9 +4,9 @@ import com.collab.workspace.analysis.model.AnalysisResult;
 import com.collab.workspace.analysis.model.CodeIssue;
 import com.collab.workspace.analysis.model.ComplexitySummary;
 import com.collab.workspace.analysis.model.IssueType;
-import com.collab.workspace.analysis.model.OptimizationResult;
 import com.collab.workspace.analysis.model.Severity;
-import com.collab.workspace.dto.JavaWorkspaceRequest;
+import com.collab.workspace.analysis.OptimizationResult;
+import com.collab.workspace.dto.WorkspaceRequest;
 
 import java.time.Instant;
 import java.util.ArrayList;

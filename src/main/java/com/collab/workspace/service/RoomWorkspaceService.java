@@ -10,12 +10,15 @@ import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
 import com.collab.workspace.repository.WorkspaceFileRepository;
+import com.collab.workspace.util.FileUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -128,6 +131,127 @@ public class RoomWorkspaceService {
             .toList();
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Object> getRoomFile(String currentUserEmail, Long roomId, Long fileId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        WorkspaceFile file = getRoomFileById(roomId, fileId);
+
+        Map<String, Object> response = toFileSummary(file);
+        response.put("content", file.getContent() == null ? "" : file.getContent());
+        return response;
+    }
+
+    @Transactional
+    public Map<String, Object> createRoomFile(String currentUserEmail, Long roomId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        String filePath = required(request.getFilePath(), "filePath is required").trim();
+        if (workspaceFileRepository.existsByRoom_IdAndFilePathIgnoreCase(roomId, filePath)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "File already exists in room");
+        }
+
+        WorkspaceFile file = new WorkspaceFile();
+        file.setRoom(room);
+        file.setFilePath(filePath);
+        file.setLanguage(resolveLanguage(request.getLanguage(), filePath));
+        file.setContent(request.getContent() == null ? "" : request.getContent());
+        file.setUpdatedBy(currentUser);
+        file.setUpdatedAt(LocalDateTime.now());
+        workspaceFileRepository.save(file);
+
+        Map<String, Object> response = toFileSummary(file);
+        response.put("content", file.getContent());
+        return response;
+    }
+
+    @Transactional
+    public Map<String, Object> saveRoomFile(String currentUserEmail, Long roomId, Long fileId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        WorkspaceFile file = getRoomFileById(roomId, fileId);
+
+        if (request.getFilePath() != null && !request.getFilePath().isBlank()) {
+            String filePath = request.getFilePath().trim();
+            boolean exists = workspaceFileRepository.existsByRoom_IdAndFilePathIgnoreCase(roomId, filePath);
+            if (exists && !filePath.equalsIgnoreCase(file.getFilePath())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Another file with this path already exists");
+            }
+            file.setFilePath(filePath);
+        }
+
+        if (request.getLanguage() != null && !request.getLanguage().isBlank()) {
+            file.setLanguage(request.getLanguage().trim().toLowerCase(Locale.ROOT));
+        } else if (request.getFilePath() != null && !request.getFilePath().isBlank()) {
+            file.setLanguage(FileUtil.detectLanguage(file.getFilePath()));
+        }
+
+        file.setContent(request.getContent() == null ? "" : request.getContent());
+        file.setUpdatedBy(currentUser);
+        file.setUpdatedAt(LocalDateTime.now());
+        workspaceFileRepository.save(file);
+
+        Map<String, Object> response = toFileSummary(file);
+        response.put("content", file.getContent());
+        return response;
+    }
+
+    @Transactional
+    public Map<String, Object> uploadJavaFile(String currentUserEmail, Long roomId, MultipartFile multipartFile) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        FileUtil.validateJavaUpload(multipartFile);
+
+        String filePath = FileUtil.sanitizeDownloadFileName(multipartFile.getOriginalFilename());
+        String baseName = filePath;
+        int suffix = 1;
+        while (workspaceFileRepository.existsByRoom_IdAndFilePathIgnoreCase(roomId, filePath)) {
+            filePath = baseName.replace(".java", "") + "_" + suffix + ".java";
+            suffix++;
+        }
+
+        String content;
+        try {
+            content = new String(multipartFile.getBytes(), StandardCharsets.UTF_8);
+        } catch (java.io.IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to read uploaded file");
+        }
+
+        WorkspaceFile file = new WorkspaceFile();
+        file.setRoom(room);
+        file.setFilePath(filePath);
+        file.setLanguage("java");
+        file.setContent(content);
+        file.setUpdatedBy(currentUser);
+        file.setUpdatedAt(LocalDateTime.now());
+        workspaceFileRepository.save(file);
+
+        Map<String, Object> response = toFileSummary(file);
+        response.put("content", file.getContent());
+        return response;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDownloadPayload(String currentUserEmail, Long roomId, Long fileId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        WorkspaceFile file = getRoomFileById(roomId, fileId);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("fileName", FileUtil.sanitizeDownloadFileName(file.getFilePath()));
+        response.put("content", file.getContent() == null ? "" : file.getContent());
+        return response;
+    }
+
     private void addMemberIfMissing(Room room, User user) {
         boolean exists = roomMemberRepository.existsByRoom_IdAndUser_Id(room.getId(), user.getId());
         if (exists) {
@@ -191,6 +315,18 @@ public class RoomWorkspaceService {
         response.put("updatedAt", file.getUpdatedAt());
         response.put("updatedByEmail", file.getUpdatedBy() != null ? file.getUpdatedBy().getEmail() : null);
         return response;
+    }
+
+    private WorkspaceFile getRoomFileById(Long roomId, Long fileId) {
+        return workspaceFileRepository.findByIdAndRoom_Id(fileId, roomId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
+    }
+
+    private String resolveLanguage(String requestedLanguage, String filePath) {
+        if (requestedLanguage != null && !requestedLanguage.isBlank()) {
+            return requestedLanguage.trim().toLowerCase(Locale.ROOT);
+        }
+        return FileUtil.detectLanguage(filePath);
     }
 
     private Room getRoomById(Long roomId) {

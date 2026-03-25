@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class JavaCompilerSupport {
 
@@ -49,8 +50,9 @@ public class JavaCompilerSupport {
                 issue.setFilePath(diagnostic.getSource() == null ? "unknown" : Path.of(diagnostic.getSource().toUri()).getFileName().toString());
                 issue.setLine(diagnostic.getLineNumber());
                 issue.setTitle(diagnostic.getKind().name());
-                issue.setExplanation(diagnostic.getMessage(null));
-                issue.setSuggestedFix("Fix the reported syntax or type problem and run the optimizer again.");
+                String diagnosticMessage = diagnostic.getMessage(null);
+                issue.setExplanation(diagnosticMessage);
+                issue.setSuggestedFix(suggestedFixForDiagnostic(diagnosticMessage));
                 issue.setImpact("Compilation failures block execution and lower analysis confidence.");
                 issues.add(issue);
             });
@@ -84,6 +86,35 @@ public class JavaCompilerSupport {
         issue.setSuggestedFix("Send at least one Java source file.");
         issue.setImpact("No meaningful optimization can be run.");
         return issue;
+    }
+
+    private String suggestedFixForDiagnostic(String message) {
+        if (message == null || message.isBlank()) {
+            return "Fix the reported syntax or type problem and run the optimizer again.";
+        }
+
+        String normalized = message.toLowerCase(Locale.ROOT);
+
+        if (normalized.contains("cannot find symbol")) {
+            return "Check variable/method/class names and required imports; ensure the symbol is declared and in scope.";
+        }
+        if (normalized.contains("';' expected") || normalized.contains("')' expected") || normalized.contains("'}' expected")) {
+            return "Fix the syntax near the reported line by balancing brackets/parentheses and adding missing separators.";
+        }
+        if (normalized.contains("incompatible types")) {
+            return "Align assigned and target types, or add safe conversion/casting where appropriate.";
+        }
+        if (normalized.contains("variable") && normalized.contains("might not have been initialized")) {
+            return "Initialize the variable on all code paths before first use.";
+        }
+        if (normalized.contains("is already defined")) {
+            return "Rename or remove duplicate declarations in the same scope.";
+        }
+        if (normalized.contains("has private access")) {
+            return "Use an accessible member (public/protected) or add a getter/setter/factory method.";
+        }
+
+        return "Fix the reported syntax or type problem and run the optimizer again.";
     }
 
     public record CompilerInspectionResult(boolean successful, List<CodeIssue> issues) {

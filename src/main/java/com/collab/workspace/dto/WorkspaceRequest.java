@@ -26,6 +26,7 @@ public class WorkspaceRequest {
     private Integer endLine;
     private Integer endColumn;
     private Boolean typing;
+    private Boolean notifyOnCompletion;
     private Boolean canEditFiles;
     private Boolean canSaveVersions;
     private Boolean canRevertVersions;
@@ -172,6 +173,14 @@ public class WorkspaceRequest {
 
     public void setTyping(Boolean typing) {
         this.typing = typing;
+    }
+
+    public Boolean getNotifyOnCompletion() {
+        return notifyOnCompletion;
+    }
+
+    public void setNotifyOnCompletion(Boolean notifyOnCompletion) {
+        this.notifyOnCompletion = notifyOnCompletion;
     }
 
     public Boolean getCanEditFiles() {

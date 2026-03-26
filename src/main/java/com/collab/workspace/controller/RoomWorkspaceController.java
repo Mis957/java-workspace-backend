@@ -1,6 +1,12 @@
 package com.collab.workspace.controller;
 
 import com.collab.workspace.dto.WorkspaceRequest;
+import com.collab.workspace.entity.Room;
+import com.collab.workspace.entity.User;
+import com.collab.workspace.repository.RoomMemberRepository;
+import com.collab.workspace.repository.RoomRepository;
+import com.collab.workspace.repository.UserRepository;
+import com.collab.workspace.socket.SocketEventServer;
 import com.collab.workspace.service.RoomWorkspaceService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
@@ -27,9 +33,64 @@ import java.util.Map;
 public class RoomWorkspaceController {
 
     private final RoomWorkspaceService roomWorkspaceService;
+    private final SocketEventServer socketEventServer;
+    private final RoomRepository roomRepository;
+    private final UserRepository userRepository;
+    private final RoomMemberRepository roomMemberRepository;
 
-    public RoomWorkspaceController(RoomWorkspaceService roomWorkspaceService) {
+    public RoomWorkspaceController(
+        RoomWorkspaceService roomWorkspaceService,
+        SocketEventServer socketEventServer,
+        RoomRepository roomRepository,
+        UserRepository userRepository,
+        RoomMemberRepository roomMemberRepository
+    ) {
         this.roomWorkspaceService = roomWorkspaceService;
+        this.socketEventServer = socketEventServer;
+        this.roomRepository = roomRepository;
+        this.userRepository = userRepository;
+        this.roomMemberRepository = roomMemberRepository;
+    }
+
+    @GetMapping(value = "/rooms/{roomId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter subscribeRoomEvents(
+        @PathVariable Long roomId,
+        HttpServletRequest httpRequest
+    ) {
+        String email = getEmail(httpRequest);
+        User user = userRepository.findByEmailIgnoreCase(email)
+            .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.UNAUTHORIZED,
+                "User not found"
+            ));
+
+        Room room = roomRepository.findById(roomId)
+            .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND,
+                "Room not found"
+            ));
+
+        boolean owner = room.getOwner() != null && room.getOwner().getId().equals(user.getId());
+        boolean member = roomMemberRepository.existsByRoom_IdAndUser_Id(roomId, user.getId());
+        if (!owner && !member) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.FORBIDDEN,
+                "You are not a member of this room"
+            );
+        }
+
+        return socketEventServer.subscribe(room, user);
+    }
+
+    @PostMapping("/rooms/{roomId}/presence")
+    public ResponseEntity<Map<String, Object>> publishPresence(
+        @PathVariable Long roomId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.accepted().body(
+            roomWorkspaceService.publishRealtimePresence(getEmail(httpRequest), roomId, request)
+        );
     }
 
     @PostMapping("/rooms")
@@ -98,23 +159,12 @@ public class RoomWorkspaceController {
         return ResponseEntity.ok(roomWorkspaceService.getRoomFiles(getEmail(httpRequest), roomId));
     }
 
-    @GetMapping(value = "/rooms/{roomId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter roomEvents(
+    @GetMapping("/rooms/{roomId}/activity")
+    public ResponseEntity<List<Map<String, Object>>> roomActivity(
         @PathVariable Long roomId,
         HttpServletRequest httpRequest
     ) {
-        return roomWorkspaceService.subscribeRoomEvents(getEmail(httpRequest), roomId);
-    }
-
-    @PostMapping("/rooms/{roomId}/presence")
-    public ResponseEntity<Map<String, Object>> publishPresence(
-        @PathVariable Long roomId,
-        @RequestBody WorkspaceRequest request,
-        HttpServletRequest httpRequest
-    ) {
-        return ResponseEntity.accepted().body(
-            roomWorkspaceService.publishRealtimePresence(getEmail(httpRequest), roomId, request)
-        );
+        return ResponseEntity.ok(roomWorkspaceService.getRoomActivity(getEmail(httpRequest), roomId));
     }
 
     @GetMapping("/rooms/{roomId}/files/{fileId}")

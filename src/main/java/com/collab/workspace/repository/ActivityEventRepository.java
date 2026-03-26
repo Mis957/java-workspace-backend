@@ -10,4 +10,6 @@ public interface ActivityEventRepository extends JpaRepository<ActivityEvent, Lo
     List<ActivityEvent> findTop30ByRoom_IdInOrderByCreatedAtDesc(List<Long> roomIds);
 
     List<ActivityEvent> findTop30ByRoom_IdOrderByCreatedAtDesc(Long roomId);
+
+    void deleteByRoom_Id(Long roomId);
 }

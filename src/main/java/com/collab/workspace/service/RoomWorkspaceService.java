@@ -11,6 +11,11 @@ import com.collab.workspace.repository.RoomMemberRepository;
 import com.collab.workspace.repository.RoomRepository;
 import com.collab.workspace.repository.UserRepository;
 import com.collab.workspace.repository.WorkspaceFileRepository;
+import com.collab.workspace.repository.VersionRepository;
+import com.collab.workspace.repository.AnalysisReportRepository;
+import com.collab.workspace.repository.CodeIssueRepository;
+import com.collab.workspace.repository.ActivityEventRepository;
+import com.collab.workspace.repository.NotificationRepository;
 import com.collab.workspace.socket.SocketEventServer;
 import com.collab.workspace.util.FileUtil;
 import org.springframework.http.HttpStatus;
@@ -24,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,6 +45,11 @@ public class RoomWorkspaceService {
     private final ActivityEventService activityEventService;
     private final NotificationService notificationService;
     private final SocketEventServer socketEventServer;
+    private final VersionRepository versionRepository;
+    private final AnalysisReportRepository analysisReportRepository;
+    private final CodeIssueRepository codeIssueRepository;
+    private final ActivityEventRepository activityEventRepository;
+    private final NotificationRepository notificationRepository;
 
     public RoomWorkspaceService(
         RoomRepository roomRepository,
@@ -47,7 +58,12 @@ public class RoomWorkspaceService {
         WorkspaceFileRepository workspaceFileRepository,
         ActivityEventService activityEventService,
         NotificationService notificationService,
-        SocketEventServer socketEventServer
+        SocketEventServer socketEventServer,
+        VersionRepository versionRepository,
+        AnalysisReportRepository analysisReportRepository,
+        CodeIssueRepository codeIssueRepository,
+        ActivityEventRepository activityEventRepository,
+        NotificationRepository notificationRepository
     ) {
         this.roomRepository = roomRepository;
         this.roomMemberRepository = roomMemberRepository;
@@ -56,6 +72,57 @@ public class RoomWorkspaceService {
         this.activityEventService = activityEventService;
         this.notificationService = notificationService;
         this.socketEventServer = socketEventServer;
+        this.versionRepository = versionRepository;
+        this.analysisReportRepository = analysisReportRepository;
+        this.codeIssueRepository = codeIssueRepository;
+        this.activityEventRepository = activityEventRepository;
+        this.notificationRepository = notificationRepository;
+    }
+
+    @Transactional
+    public Map<String, Object> updateRoom(String currentUserEmail, Long roomId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureOwner(room, currentUser);
+
+        String roomName = required(request.getRoomName(), "roomName is required").trim();
+        room.setRoomName(roomName);
+        roomRepository.save(room);
+
+        activityEventService.record(room, currentUser, "ROOM_UPDATED", "Room updated", "Room renamed to " + roomName);
+        socketEventServer.broadcastRoomEvent(room, "ROOM_UPDATED", Map.of(
+            "roomId", room.getId(),
+            "roomName", room.getRoomName(),
+            "actorEmail", currentUser.getEmail()
+        ));
+
+        return toRoomSummary(room);
+    }
+
+    @Transactional
+    public Map<String, Object> deleteRoom(String currentUserEmail, Long roomId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureOwner(room, currentUser);
+
+        List<WorkspaceFile> files = workspaceFileRepository.findAllByRoom_Id(roomId);
+        for (WorkspaceFile file : files) {
+            deleteFileDependencies(file.getId());
+            workspaceFileRepository.delete(file);
+        }
+
+        List<RoomMember> members = roomMemberRepository.findAllByRoom_IdOrderByJoinedAtAsc(roomId);
+        roomMemberRepository.deleteAll(members);
+        activityEventRepository.deleteByRoom_Id(roomId);
+        notificationRepository.deleteByRoomId(roomId);
+
+        socketEventServer.broadcastRoomEvent(room, "ROOM_DELETED", Map.of(
+            "roomId", roomId,
+            "actorEmail", currentUser.getEmail()
+        ));
+        roomRepository.delete(room);
+
+        return Map.of("status", "OK", "roomId", roomId);
     }
 
     @Transactional
@@ -206,6 +273,37 @@ public class RoomWorkspaceService {
         socketEventServer.broadcastPresence(room);
 
         return toRoomSummary(room);
+    }
+
+    @Transactional
+    public Map<String, Object> removeMember(String currentUserEmail, Long roomId, Long memberUserId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureOwner(room, currentUser);
+
+        if (room.getOwner() != null && room.getOwner().getId().equals(memberUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Owner cannot be removed from room");
+        }
+
+        RoomMember member = roomMemberRepository.findByRoom_IdAndUser_Id(roomId, memberUserId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Room member not found"));
+
+        roomMemberRepository.deleteByRoom_IdAndUser_Id(roomId, memberUserId);
+
+        activityEventService.record(
+            room,
+            currentUser,
+            "MEMBER_REMOVED",
+            "Member removed",
+            member.getUser().getEmail() + " removed from " + room.getRoomName()
+        );
+        socketEventServer.broadcastRoomEvent(room, "MEMBER_REMOVED", Map.of(
+            "actorEmail", currentUser.getEmail(),
+            "memberEmail", member.getUser().getEmail()
+        ));
+        socketEventServer.broadcastPresence(room);
+
+        return Map.of("status", "OK", "memberUserId", memberUserId);
     }
 
     @Transactional(readOnly = true)
@@ -383,6 +481,143 @@ public class RoomWorkspaceService {
         return response;
     }
 
+    @Transactional
+    public Map<String, Object> deleteRoomFile(String currentUserEmail, Long roomId, Long fileId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        ensureCanEditFiles(room, currentUser);
+
+        WorkspaceFile file = getRoomFileById(roomId, fileId);
+        String filePath = file.getFilePath();
+
+        deleteFileDependencies(fileId);
+        workspaceFileRepository.delete(file);
+
+        activityEventService.record(room, currentUser, "FILE_DELETED", "File deleted", filePath + " was deleted");
+        socketEventServer.broadcastRoomEvent(room, "FILE_DELETED", Map.of(
+            "fileId", fileId,
+            "filePath", filePath,
+            "actorEmail", currentUser.getEmail()
+        ));
+
+        return Map.of("status", "OK", "fileId", fileId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, String>> listFolders(String currentUserEmail, Long roomId) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+
+        LinkedHashSet<String> folders = new LinkedHashSet<>();
+        for (WorkspaceFile file : workspaceFileRepository.findAllByRoom_IdOrderByUpdatedAtDesc(roomId)) {
+            String path = file.getFilePath() == null ? "" : file.getFilePath().trim();
+            if (!path.contains("/")) {
+                continue;
+            }
+            String[] segments = path.split("/");
+            String current = "";
+            for (int i = 0; i < segments.length - 1; i++) {
+                current = current.isBlank() ? segments[i] : current + "/" + segments[i];
+                folders.add(current);
+            }
+        }
+
+        return folders.stream().sorted().map(path -> Map.of("path", path)).toList();
+    }
+
+    @Transactional
+    public Map<String, Object> createFolder(String currentUserEmail, Long roomId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        ensureCanEditFiles(room, currentUser);
+
+        String folderPath = normalizeFolderPath(required(request.getFolderPath(), "folderPath is required"));
+        return Map.of("status", "OK", "path", folderPath);
+    }
+
+    @Transactional
+    public Map<String, Object> renameFolder(String currentUserEmail, Long roomId, WorkspaceRequest request) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        ensureCanEditFiles(room, currentUser);
+
+        String oldPath = normalizeFolderPath(required(request.getFolderPath(), "folderPath is required"));
+        String newPath = normalizeFolderPath(required(request.getNewFolderPath(), "newFolderPath is required"));
+        if (oldPath.equalsIgnoreCase(newPath)) {
+            return Map.of("status", "OK", "updated", 0);
+        }
+
+        List<WorkspaceFile> files = workspaceFileRepository.findAllByRoom_IdOrderByUpdatedAtDesc(roomId).stream()
+            .filter(file -> file.getFilePath() != null && (file.getFilePath().equalsIgnoreCase(oldPath) || file.getFilePath().toLowerCase(Locale.ROOT).startsWith(oldPath.toLowerCase(Locale.ROOT) + "/")))
+            .toList();
+
+        for (WorkspaceFile file : files) {
+            String currentPath = file.getFilePath();
+            String suffix = currentPath.length() > oldPath.length() ? currentPath.substring(oldPath.length()) : "";
+            String nextPath = (newPath + suffix).replace("//", "/");
+            boolean exists = workspaceFileRepository.existsByRoom_IdAndFilePathIgnoreCase(roomId, nextPath);
+            if (exists && !nextPath.equalsIgnoreCase(currentPath)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "File path conflict while renaming folder: " + nextPath);
+            }
+        }
+
+        int updated = 0;
+        for (WorkspaceFile file : files) {
+            String currentPath = file.getFilePath();
+            String suffix = currentPath.length() > oldPath.length() ? currentPath.substring(oldPath.length()) : "";
+            String nextPath = (newPath + suffix).replace("//", "/");
+            file.setFilePath(nextPath);
+            file.setUpdatedAt(LocalDateTime.now());
+            file.setUpdatedBy(currentUser);
+            workspaceFileRepository.save(file);
+            updated++;
+        }
+
+        activityEventService.record(room, currentUser, "FOLDER_RENAMED", "Folder renamed", oldPath + " renamed to " + newPath);
+        socketEventServer.broadcastRoomEvent(room, "FOLDER_RENAMED", Map.of(
+            "from", oldPath,
+            "to", newPath,
+            "updated", updated,
+            "actorEmail", currentUser.getEmail()
+        ));
+
+        return Map.of("status", "OK", "updated", updated);
+    }
+
+    @Transactional
+    public Map<String, Object> deleteFolder(String currentUserEmail, Long roomId, String folderPathRaw) {
+        User currentUser = getUserByEmail(currentUserEmail);
+        Room room = getRoomById(roomId);
+        ensureMember(room, currentUser);
+        ensureCanEditFiles(room, currentUser);
+
+        String folderPath = normalizeFolderPath(required(folderPathRaw, "folderPath is required"));
+
+        List<WorkspaceFile> files = workspaceFileRepository.findAllByRoom_IdOrderByUpdatedAtDesc(roomId).stream()
+            .filter(file -> file.getFilePath() != null && (file.getFilePath().equalsIgnoreCase(folderPath) || file.getFilePath().toLowerCase(Locale.ROOT).startsWith(folderPath.toLowerCase(Locale.ROOT) + "/")))
+            .toList();
+
+        int deleted = 0;
+        for (WorkspaceFile file : files) {
+            deleteFileDependencies(file.getId());
+            workspaceFileRepository.delete(file);
+            deleted++;
+        }
+
+        activityEventService.record(room, currentUser, "FOLDER_DELETED", "Folder deleted", folderPath + " deleted with " + deleted + " files");
+        socketEventServer.broadcastRoomEvent(room, "FOLDER_DELETED", Map.of(
+            "path", folderPath,
+            "deleted", deleted,
+            "actorEmail", currentUser.getEmail()
+        ));
+
+        return Map.of("status", "OK", "deleted", deleted);
+    }
+
     private void ensureNoEditConflict(WorkspaceFile file, String expectedUpdatedAt) {
         if (expectedUpdatedAt == null || expectedUpdatedAt.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "expectedUpdatedAt is required for save operation");
@@ -542,6 +777,23 @@ public class RoomWorkspaceService {
     private WorkspaceFile getRoomFileById(Long roomId, Long fileId) {
         return workspaceFileRepository.findByIdAndRoom_Id(fileId, roomId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
+    }
+
+    private String normalizeFolderPath(String value) {
+        return value.trim()
+            .replace("\\", "/")
+            .replaceAll("^/+", "")
+            .replaceAll("/+$", "")
+            .replaceAll("/{2,}", "/");
+    }
+
+    private void deleteFileDependencies(Long fileId) {
+        versionRepository.deleteByFile_Id(fileId);
+        List<com.collab.workspace.entity.AnalysisReport> reports = analysisReportRepository.findAllByFile_Id(fileId);
+        for (com.collab.workspace.entity.AnalysisReport report : reports) {
+            codeIssueRepository.deleteByReport_Id(report.getId());
+        }
+        analysisReportRepository.deleteAll(reports);
     }
 
     private String resolveLanguage(String requestedLanguage, String filePath) {

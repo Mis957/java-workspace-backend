@@ -15,8 +15,12 @@ public class WorkspaceRequest {
     private String roomCode;
     private String memberEmail;
     private String filePath;
+    private String folderPath;
+    private String newFolderPath;
     private String language;
     private String content;
+    private String name;
+    private String password;
 
     private String versionMessage;
     private String expectedUpdatedAt;
@@ -95,6 +99,22 @@ public class WorkspaceRequest {
         this.filePath = filePath;
     }
 
+    public String getFolderPath() {
+        return folderPath;
+    }
+
+    public void setFolderPath(String folderPath) {
+        this.folderPath = folderPath;
+    }
+
+    public String getNewFolderPath() {
+        return newFolderPath;
+    }
+
+    public void setNewFolderPath(String newFolderPath) {
+        this.newFolderPath = newFolderPath;
+    }
+
     public String getLanguage() {
         return language;
     }
@@ -109,6 +129,22 @@ public class WorkspaceRequest {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
     }
 
     public String getVersionMessage() {

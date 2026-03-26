@@ -3,11 +3,14 @@ package com.collab.workspace.controller;
 import com.collab.workspace.dto.AuthResponse;
 import com.collab.workspace.dto.LoginRequest;
 import com.collab.workspace.dto.SignupRequest;
+import com.collab.workspace.dto.WorkspaceRequest;
 import com.collab.workspace.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,5 +42,27 @@ public class AuthController {
 			return ResponseEntity.status(401).build();
 		}
 		return ResponseEntity.ok(authService.me(email.toString()));
+	}
+
+	@PutMapping("/me")
+	public ResponseEntity<AuthResponse> updateMe(
+		@RequestBody WorkspaceRequest request,
+		jakarta.servlet.http.HttpServletRequest httpRequest
+	) {
+		Object email = httpRequest.getAttribute("authUserEmail");
+		if (email == null) {
+			return ResponseEntity.status(401).build();
+		}
+		return ResponseEntity.ok(authService.updateMe(email.toString(), request));
+	}
+
+	@DeleteMapping("/me")
+	public ResponseEntity<Void> deleteMe(jakarta.servlet.http.HttpServletRequest httpRequest) {
+		Object email = httpRequest.getAttribute("authUserEmail");
+		if (email == null) {
+			return ResponseEntity.status(401).build();
+		}
+		authService.deleteMe(email.toString());
+		return ResponseEntity.noContent().build();
 	}
 }

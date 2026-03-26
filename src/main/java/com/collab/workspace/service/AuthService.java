@@ -4,6 +4,7 @@ import com.collab.workspace.config.JwtUtil;
 import com.collab.workspace.dto.AuthResponse;
 import com.collab.workspace.dto.LoginRequest;
 import com.collab.workspace.dto.SignupRequest;
+import com.collab.workspace.dto.WorkspaceRequest;
 import com.collab.workspace.entity.User;
 import com.collab.workspace.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.OffsetDateTime;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 
@@ -68,6 +70,33 @@ public class AuthService {
 		User user = userRepository.findByEmailIgnoreCase(email)
 			.orElseThrow(() -> new IllegalArgumentException("User not found"));
 		return new AuthResponse(null, "Bearer", user.getName(), user.getEmail());
+	}
+
+	public AuthResponse updateMe(String email, WorkspaceRequest request) {
+		User user = userRepository.findByEmailIgnoreCase(email)
+			.orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+		if (request != null && request.getName() != null && !request.getName().isBlank()) {
+			user.setName(request.getName().trim());
+		}
+
+		if (request != null && request.getPassword() != null && !request.getPassword().isBlank()) {
+			user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+		}
+
+		userRepository.save(user);
+		return new AuthResponse(null, "Bearer", user.getName(), user.getEmail());
+	}
+
+	public void deleteMe(String email) {
+		User user = userRepository.findByEmailIgnoreCase(email)
+			.orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+		String tombstone = "deleted-" + user.getId() + "-" + OffsetDateTime.now().toEpochSecond() + "@local";
+		user.setName("Deleted User");
+		user.setEmail(tombstone);
+		user.setPasswordHash(passwordEncoder.encode("deleted-account"));
+		userRepository.save(user);
 	}
 
 	private String normalizeEmail(String email) {

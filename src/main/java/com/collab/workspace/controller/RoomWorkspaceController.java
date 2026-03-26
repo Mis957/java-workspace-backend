@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -109,6 +110,23 @@ public class RoomWorkspaceController {
         return ResponseEntity.ok(roomWorkspaceService.joinRoom(getEmail(httpRequest), request));
     }
 
+    @PutMapping("/rooms/{roomId}")
+    public ResponseEntity<Map<String, Object>> updateRoom(
+        @PathVariable Long roomId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.updateRoom(getEmail(httpRequest), roomId, request));
+    }
+
+    @DeleteMapping("/rooms/{roomId}")
+    public ResponseEntity<Map<String, Object>> deleteRoom(
+        @PathVariable Long roomId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.deleteRoom(getEmail(httpRequest), roomId));
+    }
+
     @GetMapping("/rooms")
     public ResponseEntity<List<Map<String, Object>>> myRooms(HttpServletRequest httpRequest) {
         return ResponseEntity.ok(roomWorkspaceService.getMyRooms(getEmail(httpRequest)));
@@ -137,6 +155,15 @@ public class RoomWorkspaceController {
         HttpServletRequest httpRequest
     ) {
         return ResponseEntity.ok(roomWorkspaceService.addMember(getEmail(httpRequest), roomId, request));
+    }
+
+    @DeleteMapping("/rooms/{roomId}/members/{memberUserId}")
+    public ResponseEntity<Map<String, Object>> removeMember(
+        @PathVariable Long roomId,
+        @PathVariable Long memberUserId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.removeMember(getEmail(httpRequest), roomId, memberUserId));
     }
 
     @PutMapping("/rooms/{roomId}/members/{memberUserId}/permissions")
@@ -193,6 +220,50 @@ public class RoomWorkspaceController {
         HttpServletRequest httpRequest
     ) {
         return ResponseEntity.ok(roomWorkspaceService.saveRoomFile(getEmail(httpRequest), roomId, fileId, request));
+    }
+
+    @DeleteMapping("/rooms/{roomId}/files/{fileId}")
+    public ResponseEntity<Map<String, Object>> deleteRoomFile(
+        @PathVariable Long roomId,
+        @PathVariable Long fileId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.deleteRoomFile(getEmail(httpRequest), roomId, fileId));
+    }
+
+    @GetMapping("/rooms/{roomId}/folders")
+    public ResponseEntity<List<Map<String, String>>> listFolders(
+        @PathVariable Long roomId,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.listFolders(getEmail(httpRequest), roomId));
+    }
+
+    @PostMapping("/rooms/{roomId}/folders")
+    public ResponseEntity<Map<String, Object>> createFolder(
+        @PathVariable Long roomId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.createFolder(getEmail(httpRequest), roomId, request));
+    }
+
+    @PutMapping("/rooms/{roomId}/folders")
+    public ResponseEntity<Map<String, Object>> renameFolder(
+        @PathVariable Long roomId,
+        @RequestBody WorkspaceRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.renameFolder(getEmail(httpRequest), roomId, request));
+    }
+
+    @DeleteMapping("/rooms/{roomId}/folders")
+    public ResponseEntity<Map<String, Object>> deleteFolder(
+        @PathVariable Long roomId,
+        @RequestParam("folderPath") String folderPath,
+        HttpServletRequest httpRequest
+    ) {
+        return ResponseEntity.ok(roomWorkspaceService.deleteFolder(getEmail(httpRequest), roomId, folderPath));
     }
 
     @PostMapping(value = "/rooms/{roomId}/files/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

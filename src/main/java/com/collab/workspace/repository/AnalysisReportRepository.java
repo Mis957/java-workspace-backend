@@ -11,6 +11,8 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReport, 
 
 	List<AnalysisReport> findAllByFile_IdOrderByCreatedAtDesc(Long fileId);
 
+	List<AnalysisReport> findAllByFile_Id(Long fileId);
+
 	long countByFile_Room_IdIn(List<Long> roomIds);
 
 	List<AnalysisReport> findTop20ByFile_Room_IdInOrderByCreatedAtDesc(List<Long> roomIds);

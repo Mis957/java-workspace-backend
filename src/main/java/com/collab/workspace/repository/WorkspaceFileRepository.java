@@ -10,6 +10,8 @@ public interface WorkspaceFileRepository extends JpaRepository<WorkspaceFile, Lo
 
 	List<WorkspaceFile> findAllByRoom_IdOrderByUpdatedAtDesc(Long roomId);
 
+	List<WorkspaceFile> findAllByRoom_Id(Long roomId);
+
 	Optional<WorkspaceFile> findByIdAndRoom_Id(Long id, Long roomId);
 
 	boolean existsByRoom_IdAndFilePathIgnoreCase(Long roomId, String filePath);

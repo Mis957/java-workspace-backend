@@ -15,5 +15,7 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, RoomMemb
 
 	List<RoomMember> findAllByRoom_IdOrderByJoinedAtAsc(Long roomId);
 
+	void deleteByRoom_IdAndUser_Id(Long roomId, Long userId);
+
 	long countByRoom_Id(Long roomId);
 }

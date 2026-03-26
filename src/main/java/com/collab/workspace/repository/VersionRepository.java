@@ -18,5 +18,7 @@ public interface VersionRepository extends JpaRepository<Version, Long> {
 
 	long countByFile_Room_IdIn(List<Long> roomIds);
 
+	void deleteByFile_Id(Long fileId);
+
 	List<Version> findTop20ByFile_Room_IdInOrderByCreatedAtDesc(List<Long> roomIds);
 }

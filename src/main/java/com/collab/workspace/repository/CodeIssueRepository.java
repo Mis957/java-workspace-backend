@@ -8,4 +8,6 @@ import java.util.List;
 public interface CodeIssueRepository extends JpaRepository<CodeIssue, Long> {
 
 	List<CodeIssue> findAllByReport_IdOrderByCreatedAtDesc(Long reportId);
+
+	void deleteByReport_Id(Long reportId);
 }
